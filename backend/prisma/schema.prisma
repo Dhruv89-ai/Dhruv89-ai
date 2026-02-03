@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  oauthProvider String?
+  videos       Video[]
+  subscriptions Subscription[]
+}
+
+model Video {
+  id           String   @id @default(uuid())
+  userId       String
+  title        String
+  sourceUrl    String
+  status       VideoStatus @default(UPLOADED)
+  durationSec  Int?
+  language     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  clips        Clip[]
+  subtitles    Subtitle[]
+  user         User @relation(fields: [userId], references: [id])
+  jobs         Job[]
+}
+
+model Clip {
+  id           String   @id @default(uuid())
+  videoId      String
+  title        String
+  startSec     Int
+  endSec       Int
+  aspectRatio  String
+  status       ClipStatus @default(PENDING)
+  exportPreset String
+  outputUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  video        Video @relation(fields: [videoId], references: [id])
+}
+
+model Subtitle {
+  id        String   @id @default(uuid())
+  videoId   String
+  language  String
+  content   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  video     Video @relation(fields: [videoId], references: [id])
+}
+
+model Job {
+  id          String   @id @default(uuid())
+  videoId     String
+  type        JobType
+  status      JobStatus @default(QUEUED)
+  progress    Int @default(0)
+  payload     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  video       Video @relation(fields: [videoId], references: [id])
+}
+
+model Subscription {
+  id         String   @id @default(uuid())
+  userId     String
+  plan       String
+  status     String
+  startedAt  DateTime @default(now())
+  endsAt     DateTime?
+  user       User @relation(fields: [userId], references: [id])
+}
+
+enum VideoStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ClipStatus {
+  PENDING
+  RENDERING
+  READY
+  FAILED
+}
+
+enum JobType {
+  INGEST
+  TRANSCRIBE
+  DETECT_HIGHLIGHTS
+  GENERATE_CLIPS
+  TRANSLATE
+  RENDER
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
