@@ -24,6 +24,14 @@ router.post("/render", authMiddleware, async (req, res) => {
   }
 
   const jobId = uuid();
+  await prisma.job.create({
+    data: {
+      id: jobId,
+      videoId: clip.videoId,
+      type: "RENDER",
+      payload: { clipId: value.clipId, preset: value.preset },
+    },
+  });
   await processingQueue.add("render", { clipId: value.clipId, preset: value.preset }, { jobId });
 
   return res.status(202).json({ jobId });

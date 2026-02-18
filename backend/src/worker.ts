@@ -14,13 +14,25 @@ const worker = new Worker(
   async (job) => {
     switch (job.name) {
       case "ingest":
-        return callAi("/jobs/ingest", { video_id: job.data.videoId, source_url: job.data.sourceUrl });
+        return callAi("/jobs/ingest", {
+          job_id: job.id,
+          video_id: job.data.videoId,
+          source_url: job.data.sourceUrl,
+        });
       case "detect-highlights":
-        return callAi("/jobs/highlights", { video_id: job.data.videoId });
+        return callAi("/jobs/highlights", { job_id: job.id, video_id: job.data.videoId });
       case "translate":
-        return callAi("/jobs/translate", { video_id: job.data.videoId, languages: job.data.languages });
+        return callAi("/jobs/translate", {
+          job_id: job.id,
+          video_id: job.data.videoId,
+          languages: job.data.languages,
+        });
       case "render":
-        return callAi("/jobs/render", { clip_id: job.data.clipId, preset: job.data.preset });
+        return callAi("/jobs/render", {
+          job_id: job.id,
+          clip_id: job.data.clipId,
+          preset: job.data.preset,
+        });
       default:
         return { status: "ignored" };
     }

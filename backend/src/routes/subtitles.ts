@@ -31,7 +31,7 @@ router.post("/", authMiddleware, async (req, res) => {
   return res.json({ subtitle });
 });
 
-router.get(":videoId", authMiddleware, async (req, res) => {
+router.get("/:videoId", authMiddleware, async (req, res) => {
   const subtitles = await prisma.subtitle.findMany({
     where: { videoId: req.params.videoId },
   });

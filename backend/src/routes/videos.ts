@@ -51,6 +51,14 @@ export const router = (io: Server) => {
     });
 
     const jobId = uuid();
+    await prisma.job.create({
+      data: {
+        id: jobId,
+        videoId: video.id,
+        type: "INGEST",
+        payload: { localPath: req.file.path },
+      },
+    });
     await processingQueue.add(
       "ingest",
       { videoId: video.id, localPath: req.file.path },
@@ -78,6 +86,14 @@ export const router = (io: Server) => {
     });
 
     const jobId = uuid();
+    await prisma.job.create({
+      data: {
+        id: jobId,
+        videoId: video.id,
+        type: "INGEST",
+        payload: { sourceUrl: value.sourceUrl },
+      },
+    });
     await processingQueue.add("ingest", { videoId: video.id, sourceUrl: value.sourceUrl }, { jobId });
 
     return res.status(201).json({ video, jobId });
@@ -100,7 +116,7 @@ export const router = (io: Server) => {
     return res.json({ videos });
   });
 
-  routes.post(":videoId/clips", authMiddleware, async (req, res) => {
+  routes.post("/:videoId/clips", authMiddleware, async (req, res) => {
     const { error, value } = clipSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ error: error.message });
@@ -118,20 +134,44 @@ export const router = (io: Server) => {
     });
 
     const jobId = uuid();
+    await prisma.job.create({
+      data: {
+        id: jobId,
+        videoId: clip.videoId,
+        type: "RENDER",
+        payload: { clipId: clip.id, exportPreset: value.exportPreset },
+      },
+    });
     await processingQueue.add("render", { clipId: clip.id }, { jobId });
 
     return res.status(201).json({ clip, jobId });
   });
 
-  routes.post(":videoId/highlights", authMiddleware, async (req, res) => {
+  routes.post("/:videoId/highlights", authMiddleware, async (req, res) => {
     const jobId = uuid();
+    await prisma.job.create({
+      data: {
+        id: jobId,
+        videoId: req.params.videoId,
+        type: "DETECT_HIGHLIGHTS",
+        payload: {},
+      },
+    });
     await processingQueue.add("detect-highlights", { videoId: req.params.videoId }, { jobId });
     return res.status(202).json({ jobId });
   });
 
-  routes.post(":videoId/translate", authMiddleware, async (req, res) => {
+  routes.post("/:videoId/translate", authMiddleware, async (req, res) => {
     const { languages } = req.body;
     const jobId = uuid();
+    await prisma.job.create({
+      data: {
+        id: jobId,
+        videoId: req.params.videoId,
+        type: "TRANSLATE",
+        payload: { languages },
+      },
+    });
     await processingQueue.add("translate", { videoId: req.params.videoId, languages }, { jobId });
     return res.status(202).json({ jobId });
   });

@@ -15,16 +15,18 @@ class JobRequest(BaseModel):
   video_id: str
   source_url: Optional[str] = None
   languages: Optional[List[str]] = None
+  job_id: Optional[str] = None
 
 
 class RenderRequest(BaseModel):
   clip_id: str
   preset: Optional[str] = None
+  job_id: Optional[str] = None
 
 
 @app.post("/jobs/ingest")
 async def ingest(job: JobRequest, tasks: BackgroundTasks):
-  job_id = str(uuid.uuid4())
+  job_id = job.job_id or str(uuid.uuid4())
   tasks.add_task(_notify, job_id, "RUNNING", 5, {"step": "ingest"})
   tasks.add_task(_notify, job_id, "SUCCEEDED", 100, {"step": "ingest"})
   return {"jobId": job_id}
@@ -32,7 +34,7 @@ async def ingest(job: JobRequest, tasks: BackgroundTasks):
 
 @app.post("/jobs/transcribe")
 async def transcribe(job: JobRequest, tasks: BackgroundTasks):
-  job_id = str(uuid.uuid4())
+  job_id = job.job_id or str(uuid.uuid4())
   tasks.add_task(_notify, job_id, "RUNNING", 10, {"step": "transcribe"})
   tasks.add_task(
     _notify,
@@ -51,7 +53,7 @@ async def transcribe(job: JobRequest, tasks: BackgroundTasks):
 
 @app.post("/jobs/highlights")
 async def highlights(job: JobRequest, tasks: BackgroundTasks):
-  job_id = str(uuid.uuid4())
+  job_id = job.job_id or str(uuid.uuid4())
   tasks.add_task(_notify, job_id, "RUNNING", 30, {"step": "highlights"})
   tasks.add_task(
     _notify,
@@ -70,7 +72,7 @@ async def highlights(job: JobRequest, tasks: BackgroundTasks):
 
 @app.post("/jobs/translate")
 async def translate(job: JobRequest, tasks: BackgroundTasks):
-  job_id = str(uuid.uuid4())
+  job_id = job.job_id or str(uuid.uuid4())
   tasks.add_task(_notify, job_id, "RUNNING", 50, {"step": "translate", "languages": job.languages})
   tasks.add_task(
     _notify,
@@ -88,7 +90,7 @@ async def translate(job: JobRequest, tasks: BackgroundTasks):
 
 @app.post("/jobs/render")
 async def render(job: RenderRequest, tasks: BackgroundTasks):
-  job_id = str(uuid.uuid4())
+  job_id = job.job_id or str(uuid.uuid4())
   tasks.add_task(_notify, job_id, "RUNNING", 60, {"step": "render"})
   tasks.add_task(
     _notify,
