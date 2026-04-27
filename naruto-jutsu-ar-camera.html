@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Naruto Jutsu AR Camera</title>
+  <style>
+    :root {
+      --chakra: #35c8ff;
+      --fire: #ff7b2f;
+      --bg: #05070d;
+      --panel: rgba(7, 13, 24, 0.65);
+      --text: #d9f4ff;
+      --warn: #ff4c6a;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", Roboto, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 1;
+      background: #000;
+    }
+
+    #landmarkCanvas, #arCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    #arCanvas { z-index: 3; }
+
+    .hud {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 14px);
+    }
+
+    .top-bar, .bottom-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      pointer-events: auto;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(53, 200, 255, 0.35);
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 22px rgba(53, 200, 255, 0.14), inset 0 0 20px rgba(255, 123, 47, 0.08);
+      padding: 10px 12px;
+      min-width: 136px;
+    }
+
+    .label { font-size: 12px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.08em; }
+    .value { font-size: 14px; font-weight: 700; margin-top: 2px; }
+
+    .chakra-wrap { width: min(320px, 60vw); }
+    .chakra-track {
+      width: 100%;
+      height: 9px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 999px;
+      margin-top: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .chakra-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #1eb7ff 0%, #7be5ff 100%);
+      box-shadow: 0 0 18px rgba(70, 205, 255, 0.7);
+      transition: width 120ms linear;
+    }
+
+    .cooldowns { display: grid; grid-template-columns: repeat(2, minmax(70px,1fr)); gap: 8px; }
+    .cd-item { font-size: 12px; opacity: 0.86; }
+    .cd-item span { display: block; font-weight: 700; font-size: 13px; color: var(--chakra); }
+
+    #startBtn, #voiceBtn {
+      appearance: none;
+      border: 1px solid rgba(53, 200, 255, 0.5);
+      color: var(--text);
+      background: linear-gradient(180deg, rgba(36,80,126,0.8), rgba(16,24,39,0.8));
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 13px;
+    }
+
+    #status {
+      position: absolute;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom) + 94px);
+      transform: translateX(-50%);
+      z-index: 12;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(3, 10, 22, 0.7);
+      border: 1px solid rgba(53, 200, 255, 0.5);
+      box-shadow: 0 0 20px rgba(53, 200, 255, 0.3);
+      font-size: 13px;
+      text-align: center;
+      min-width: 180px;
+    }
+
+    .warn { color: var(--warn); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="landmarkCanvas"></canvas>
+    <canvas id="arCanvas"></canvas>
+
+    <div class="hud">
+      <div class="top-bar">
+        <div class="panel">
+          <div class="label">Detected Gesture</div>
+          <div class="value" id="gestureName">None</div>
+        </div>
+
+        <div class="panel chakra-wrap">
+          <div class="label">Chakra Meter</div>
+          <div class="chakra-track"><div id="chakraFill" class="chakra-fill"></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="label">Active Jutsu</div>
+          <div class="value" id="jutsuName">Idle</div>
+        </div>
+      </div>
+
+      <div class="bottom-bar">
+        <div class="panel cooldowns" id="cooldownGrid"></div>
+        <div style="display:flex; gap:8px; pointer-events:auto;">
+          <button id="voiceBtn">Voice: OFF</button>
+          <button id="startBtn">Activate Camera</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="status">Ready. Tap Activate Camera.</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+  <script>
+    const videoEl = document.getElementById('video');
+    const landmarkCanvas = document.getElementById('landmarkCanvas');
+    const landmarkCtx = landmarkCanvas.getContext('2d');
+    const arCanvas = document.getElementById('arCanvas');
+    const gestureNameEl = document.getElementById('gestureName');
+    const jutsuNameEl = document.getElementById('jutsuName');
+    const chakraFillEl = document.getElementById('chakraFill');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const voiceBtn = document.getElementById('voiceBtn');
+    const cooldownGrid = document.getElementById('cooldownGrid');
+
+    const holdDuration = 800;
+    const cooldownDuration = 2000;
+    const comboWindow = 2500;
+
+    const jutsuMap = {
+      Tiger: 'Fireball Jutsu',
+      Snake: 'Water Wave Jutsu',
+      Ram: 'Shadow Clone Jutsu',
+      OneHand: 'Lightning Strike'
+    };
+
+    const chakraCost = {
+      'Fireball Jutsu': 18,
+      'Water Wave Jutsu': 15,
+      'Shadow Clone Jutsu': 24,
+      'Lightning Strike': 12,
+      'Advanced Fire Blast': 30,
+    };
+
+    const cooldowns = {};
+    const jutsuKeys = Object.values(jutsuMap).concat(['Advanced Fire Blast']);
+    jutsuKeys.forEach(k => cooldowns[k] = 0);
+
+    let chakra = 100;
+    let lastTime = performance.now();
+    let currentGesture = 'None';
+    let gestureStart = 0;
+    let lastActivated = 0;
+    let comboHistory = [];
+
+    let scene, camera3D, renderer;
+    const effectPool = [];
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    let speechEnabled = false;
+    let recognition = null;
+
+    function initThree() {
+      scene = new THREE.Scene();
+      camera3D = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera3D.position.z = 5;
+
+      renderer = new THREE.WebGLRenderer({ canvas: arCanvas, alpha: true, antialias: false, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+      scene.add(ambient);
+      const point = new THREE.PointLight(0x66d9ff, 2, 40);
+      point.position.set(0, 1, 3);
+      scene.add(point);
+    }
+
+    function resizeAll() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      landmarkCanvas.width = w;
+      landmarkCanvas.height = h;
+      if (renderer) {
+        renderer.setSize(w, h);
+        camera3D.aspect = w / h;
+        camera3D.updateProjectionMatrix();
+      }
+    }
+
+    function normalizedToWorld(x, y, z = 0) {
+      return new THREE.Vector3((x - 0.5) * 4.2, -(y - 0.5) * 7.2, -1.5 - z * 2.0);
+    }
+
+    function makeParticleBurst(color, position, speed = 0.02, count = 80, life = 1400) {
+      const group = new THREE.Group();
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      const velocity = [];
+      for (let i = 0; i < count; i++) {
+        positions[i * 3] = 0;
+        positions[i * 3 + 1] = 0;
+        positions[i * 3 + 2] = 0;
+        velocity.push(new THREE.Vector3(
+          (Math.random() - 0.5) * speed,
+          (Math.random() - 0.2) * speed,
+          (Math.random() - 0.5) * speed
+        ));
+      }
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.PointsMaterial({ color, size: 0.09, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+      const points = new THREE.Points(geometry, material);
+      group.add(points);
+      group.position.copy(position);
+      scene.add(group);
+
+      effectPool.push({
+        type: 'particles',
+        mesh: group,
+        points,
+        velocity,
+        created: performance.now(),
+        life
+      });
+    }
+
+    function addFireball(pos) {
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 20, 20),
+        new THREE.MeshBasicMaterial({ color: 0xff7b2f, transparent: true, opacity: 0.95 })
+      );
+      sphere.position.copy(pos);
+      scene.add(sphere);
+      effectPool.push({ type: 'fireball', mesh: sphere, created: performance.now(), life: 1500 });
+      makeParticleBurst(0xff9b52, pos, 0.028, 100, 1300);
+    }
+
+    function addWaterWave(pos) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.12, 0.04, 16, 70),
+        new THREE.MeshBasicMaterial({ color: 0x3bc3ff, transparent: true, opacity: 0.75 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.copy(pos);
+      scene.add(ring);
+      effectPool.push({ type: 'water', mesh: ring, created: performance.now(), life: 1300 });
+      makeParticleBurst(0x6fe6ff, pos, 0.018, 90, 1200);
+    }
+
+    function addLightning(pos) {
+      const geo = new THREE.CylinderGeometry(0.035, 0.007, 1.3, 10);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xdaf3ff, transparent: true, opacity: 0.95 });
+      const beam = new THREE.Mesh(geo, mat);
+      beam.position.copy(pos);
+      beam.rotation.z = (Math.random() - 0.5) * 0.7;
+      scene.add(beam);
+      effectPool.push({ type: 'lightning', mesh: beam, created: performance.now(), life: 500 });
+      makeParticleBurst(0xb0eaff, pos, 0.04, 60, 650);
+    }
+
+    function addShadowClone(pos) {
+      const clone = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.18, 0.6, 4, 12),
+        new THREE.MeshBasicMaterial({ color: 0x7db5ff, transparent: true, opacity: 0.45 })
+      );
+      clone.position.copy(pos).add(new THREE.Vector3(0.4, -0.2, 0));
+      scene.add(clone);
+      effectPool.push({ type: 'clone', mesh: clone, created: performance.now(), life: 2000 });
+      makeParticleBurst(0x90c6ff, clone.position, 0.02, 80, 1500);
+    }
+
+    function addAdvancedFireBlast(pos) {
+      addFireball(pos.clone().add(new THREE.Vector3(-0.2, 0, 0)));
+      addFireball(pos.clone().add(new THREE.Vector3(0.2, 0, 0)));
+      makeParticleBurst(0xff6a00, pos, 0.045, 180, 1800);
+    }
+
+    function playTone(freq = 440, duration = 0.15, type = 'sawtooth') {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const t = audioCtx.currentTime;
+      gain.gain.exponentialRampToValueAtTime(0.1, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+      osc.start();
+      osc.stop(t + duration + 0.02);
+    }
+
+    function playJutsuSound(name) {
+      if (name.includes('Fire')) { playTone(220, 0.25, 'sawtooth'); playTone(330, 0.16, 'triangle'); }
+      else if (name.includes('Water')) { playTone(170, 0.28, 'sine'); }
+      else if (name.includes('Lightning')) { playTone(720, 0.08, 'square'); playTone(980, 0.07, 'square'); }
+      else if (name.includes('Shadow')) { playTone(150, 0.3, 'triangle'); }
+      else { playTone(260, 0.2, 'sawtooth'); }
+    }
+
+    function dist(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.hypot(dx, dy);
+    }
+
+    function fingerState(landmarks, handednessLabel) {
+      const up = (tip, pip) => landmarks[tip].y < landmarks[pip].y;
+      const thumbOpen = handednessLabel === 'Right'
+        ? landmarks[4].x < landmarks[3].x
+        : landmarks[4].x > landmarks[3].x;
+      return {
+        thumb: thumbOpen,
+        index: up(8, 6),
+        middle: up(12, 10),
+        ring: up(16, 14),
+        pinky: up(20, 18)
+      };
+    }
+
+    function detectGesture(multiHandLandmarks, multiHandedness) {
+      if (!multiHandLandmarks || multiHandLandmarks.length === 0) return 'None';
+
+      if (multiHandLandmarks.length >= 2) {
+        const a = multiHandLandmarks[0];
+        const b = multiHandLandmarks[1];
+        const wristsClose = dist(a[0], b[0]) < 0.18;
+        const indexClose = dist(a[8], b[8]) < 0.12;
+        const middleClose = dist(a[12], b[12]) < 0.12;
+        if (wristsClose && indexClose && middleClose) return 'Ram';
+      }
+
+      const l = multiHandLandmarks[0];
+      const handLabel = multiHandedness?.[0]?.label || 'Right';
+      const f = fingerState(l, handLabel);
+
+      const adjacentClose = [dist(l[8], l[12]), dist(l[12], l[16]), dist(l[16], l[20])].every(d => d < 0.09);
+
+      if (f.index && f.middle && !f.ring && !f.pinky) return 'Tiger';
+      if (f.index && f.middle && f.ring && f.pinky && f.thumb && adjacentClose) return 'Snake';
+      if (f.index && !f.middle && !f.ring && !f.pinky && !f.thumb) return 'OneHand';
+
+      return 'None';
+    }
+
+    function updateCooldownHUD(now) {
+      cooldownGrid.innerHTML = '';
+      Object.keys(cooldowns).forEach(name => {
+        const left = Math.max(0, cooldowns[name] - now);
+        const item = document.createElement('div');
+        item.className = 'cd-item';
+        item.innerHTML = `${name.split(' ')[0]}<span>${left > 0 ? (left / 1000).toFixed(1) + 's' : 'Ready'}</span>`;
+        cooldownGrid.appendChild(item);
+      });
+    }
+
+    function getPalmPosition(hand) {
+      const c = {
+        x: (hand[0].x + hand[5].x + hand[9].x + hand[13].x + hand[17].x) / 5,
+        y: (hand[0].y + hand[5].y + hand[9].y + hand[13].y + hand[17].y) / 5,
+        z: (hand[0].z + hand[9].z) / 2
+      };
+      return normalizedToWorld(c.x, c.y, c.z);
+    }
+
+    function activateJutsu(jutsu, palmPos) {
+      const now = performance.now();
+      const cost = chakraCost[jutsu] || 10;
+
+      if (cooldowns[jutsu] > now) {
+        statusEl.textContent = `${jutsu} cooling down...`;
+        return;
+      }
+      if (chakra < cost) {
+        statusEl.innerHTML = `<span class="warn">Not enough chakra for ${jutsu}</span>`;
+        return;
+      }
+
+      chakra = Math.max(0, chakra - cost);
+      cooldowns[jutsu] = now + cooldownDuration;
+      jutsuNameEl.textContent = jutsu;
+      statusEl.textContent = `${jutsu} activated!`;
+      playJutsuSound(jutsu);
+
+      if (jutsu === 'Fireball Jutsu') addFireball(palmPos);
+      else if (jutsu === 'Water Wave Jutsu') addWaterWave(palmPos);
+      else if (jutsu === 'Lightning Strike') addLightning(palmPos);
+      else if (jutsu === 'Shadow Clone Jutsu') addShadowClone(palmPos);
+      else if (jutsu === 'Advanced Fire Blast') addAdvancedFireBlast(palmPos);
+    }
+
+    function tryCombo(current, palmPos) {
+      const now = performance.now();
+      comboHistory = comboHistory.filter(item => now - item.t < comboWindow);
+      comboHistory.push({ g: current, t: now });
+      const recent = comboHistory.map(x => x.g).join('>');
+
+      if (recent.includes('Snake>Tiger')) {
+        activateJutsu('Advanced Fire Blast', palmPos);
+        comboHistory = [];
+        return true;
+      }
+      return false;
+    }
+
+    function renderEffects(timeNow) {
+      for (let i = effectPool.length - 1; i >= 0; i--) {
+        const e = effectPool[i];
+        const age = timeNow - e.created;
+        const life = e.life;
+        const t = age / life;
+
+        if (e.type === 'particles') {
+          const posAttr = e.points.geometry.attributes.position;
+          for (let p = 0; p < e.velocity.length; p++) {
+            posAttr.array[p * 3] += e.velocity[p].x;
+            posAttr.array[p * 3 + 1] += e.velocity[p].y;
+            posAttr.array[p * 3 + 2] += e.velocity[p].z;
+          }
+          posAttr.needsUpdate = true;
+          e.points.material.opacity = Math.max(0, 1 - t);
+        } else if (e.type === 'fireball') {
+          e.mesh.scale.setScalar(1 + t * 2.2);
+          e.mesh.material.opacity = Math.max(0, 1 - t);
+        } else if (e.type === 'water') {
+          e.mesh.scale.set(1 + t * 8, 1 + t * 8, 1);
+          e.mesh.rotation.z += 0.15;
+          e.mesh.material.opacity = Math.max(0, 0.8 - t);
+        } else if (e.type === 'lightning') {
+          e.mesh.material.opacity = Math.random() * 0.7 + 0.25;
+          e.mesh.scale.y = 1 + Math.random() * 0.5;
+        } else if (e.type === 'clone') {
+          e.mesh.position.x += 0.003;
+          e.mesh.material.opacity = Math.max(0, 0.55 - t * 0.6);
+        }
+
+        if (age >= life) {
+          scene.remove(e.mesh);
+          if (e.mesh.geometry) e.mesh.geometry.dispose();
+          if (e.mesh.material) e.mesh.material.dispose();
+          effectPool.splice(i, 1);
+        }
+      }
+      renderer.render(scene, camera3D);
+    }
+
+    function onResults(results) {
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+
+      chakra = Math.min(100, chakra + dt * 6.5);
+      chakraFillEl.style.width = chakra.toFixed(1) + '%';
+
+      landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawConnectors(landmarkCtx, landmarks, HAND_CONNECTIONS, { color: '#34d0ff', lineWidth: 2 });
+          drawLandmarks(landmarkCtx, landmarks, { color: '#ff9e61', lineWidth: 1, radius: 2.5 });
+        }
+      }
+
+      const gesture = detectGesture(results.multiHandLandmarks, results.multiHandedness);
+      gestureNameEl.textContent = gesture;
+
+      if (gesture !== currentGesture) {
+        currentGesture = gesture;
+        gestureStart = now;
+      }
+
+      const handForAnchor = results.multiHandLandmarks?.[0];
+      const palm = handForAnchor ? getPalmPosition(handForAnchor) : normalizedToWorld(0.5, 0.6, 0);
+
+      if (gesture !== 'None' && now - gestureStart >= holdDuration && now - lastActivated > 180) {
+        if (!tryCombo(gesture, palm)) {
+          const jutsu = jutsuMap[gesture];
+          if (jutsu) activateJutsu(jutsu, palm);
+        }
+        lastActivated = now;
+      }
+
+      updateCooldownHUD(now);
+      renderEffects(now);
+    }
+
+    async function setupSpeech() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        statusEl.innerHTML = '<span class="warn">Voice control unsupported on this browser.</span>';
+        return;
+      }
+
+      recognition = new SR();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.continuous = true;
+
+      recognition.onresult = e => {
+        const text = e.results[e.results.length - 1][0].transcript.toLowerCase();
+        if (text.includes('fire')) activateJutsu('Fireball Jutsu', normalizedToWorld(0.5, 0.55));
+        if (text.includes('water')) activateJutsu('Water Wave Jutsu', normalizedToWorld(0.5, 0.55));
+        if (text.includes('lightning')) activateJutsu('Lightning Strike', normalizedToWorld(0.5, 0.55));
+        if (text.includes('clone')) activateJutsu('Shadow Clone Jutsu', normalizedToWorld(0.5, 0.55));
+      };
+      recognition.onerror = () => { speechEnabled = false; voiceBtn.textContent = 'Voice: OFF'; };
+    }
+
+    async function start() {
+      try {
+        await audioCtx.resume();
+        statusEl.textContent = 'Starting camera...';
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        });
+
+        videoEl.srcObject = stream;
+        await videoEl.play();
+
+        resizeAll();
+        initThree();
+        updateCooldownHUD(performance.now());
+
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({
+          maxNumHands: 2,
+          modelComplexity: 0,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence: 0.55
+        });
+        hands.onResults(onResults);
+
+        const mpCamera = new Camera(videoEl, {
+          onFrame: async () => {
+            await hands.send({ image: videoEl });
+          },
+          width: 640,
+          height: 480
+        });
+
+        await mpCamera.start();
+        statusEl.textContent = 'Camera live. Hold hand sign for 0.8s to cast jutsu.';
+        startBtn.textContent = 'Camera Active';
+        startBtn.disabled = true;
+      } catch (err) {
+        console.error(err);
+        statusEl.innerHTML = '<span class="warn">Camera initialization failed. Check permission / HTTPS context.</span>';
+      }
+    }
+
+    startBtn.addEventListener('click', start);
+    voiceBtn.addEventListener('click', async () => {
+      if (!recognition) await setupSpeech();
+      if (!recognition) return;
+
+      speechEnabled = !speechEnabled;
+      if (speechEnabled) {
+        recognition.start();
+        voiceBtn.textContent = 'Voice: ON';
+        statusEl.textContent = 'Voice trigger active.';
+      } else {
+        recognition.stop();
+        voiceBtn.textContent = 'Voice: OFF';
+      }
+    });
+
+    window.addEventListener('resize', resizeAll);
+    resizeAll();
+  </script>
+</body>
+</html>
